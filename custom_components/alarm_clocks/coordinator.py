@@ -21,6 +21,7 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -48,6 +49,7 @@ from .const import (
     PHASE_PRE,
     PHASE_SNOOZE,
     RESUME_GRACE,
+    SIGNAL_CLOCK_UPDATED,
     SOURCE_AUTO,
     SOURCE_CLEANUP,
     SOURCE_MANUAL,
@@ -132,6 +134,7 @@ class AlarmClockCoordinator(DataUpdateCoordinator[AlarmClockSnapshot]):
         phase that was cut short.
         """
         self._unloading = True
+        async_dispatcher_send(self.hass, SIGNAL_CLOCK_UPDATED)
         self._async_cancel_timers()
         for unsub in self._unsubs:
             unsub()
@@ -336,10 +339,16 @@ class AlarmClockCoordinator(DataUpdateCoordinator[AlarmClockSnapshot]):
             post_due_at=self.runtime.post_due_at,
         )
 
+    @property
+    def is_running(self) -> bool:
+        """True while the alarm clock is set up and not being unloaded."""
+        return not self._unloading and self.data is not None
+
     @callback
     def _async_push(self) -> None:
-        """Push the current state to all entities."""
+        """Push the current state to all entities and to the groups."""
         self.async_set_updated_data(self._build_snapshot())
+        async_dispatcher_send(self.hass, SIGNAL_CLOCK_UPDATED)
 
     async def _async_save(self) -> None:
         """Persist the runtime state."""

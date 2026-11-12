@@ -17,10 +17,27 @@ PLATFORMS: Final[list[Platform]] = [
     Platform.SWITCH,
     Platform.TIME,
 ]
+GROUP_PLATFORMS: Final[list[Platform]] = [
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.SENSOR,
+]
+HUB_PLATFORMS: Final[list[Platform]] = [Platform.BUTTON]
+
+# Config entry kinds, stored in ConfigEntry.data. Alarm clocks predate the
+# key, so an entry without it is an alarm clock.
+CONF_KIND: Final = "kind"
+KIND_CLOCK: Final = "clock"
+KIND_GROUP: Final = "group"
+KIND_HUB: Final = "hub"
+HUB_UNIQUE_ID: Final = "alarm_clocks_groups"
+# Sent by every alarm clock after it has pushed a new state to its entities.
+SIGNAL_CLOCK_UPDATED: Final = f"{DOMAIN}_clock_updated"
 
 # ---------------------------------------------------------------------------
 # Configuration keys (stored in ConfigEntry.options)
 # ---------------------------------------------------------------------------
+CONF_MEMBERS: Final = "members"
 CONF_ENABLED: Final = "enabled"
 CONF_ALARM_TIME: Final = "alarm_time"
 CONF_DAYS: Final = "days"

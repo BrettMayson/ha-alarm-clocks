@@ -74,10 +74,20 @@
         "data_description": {
           "post_timeout": "Post-Aktionen, die nach so vielen Minuten noch laufen, werden gestoppt, damit eine Sequenz, die nie endet, einen Einmal-Wecker nicht eingeschaltet hält."
         }
+      },
+      "group": {
+        "title": "Gruppenmitglieder",
+        "description": "Wähle die Wecker, die zu dieser Gruppe gehören. Die Sensoren und Buttons der Gruppe fassen sie zusammen. Ein Wecker kann zu mehreren Gruppen gehören.",
+        "data": {
+          "members": "Wecker"
+        }
       }
     },
     "error": {
       "invalid_actions": "Diese Aktionen sind ungültig. Der Grund steht im Log."
+    },
+    "abort": {
+      "hub_not_configurable": "Der Gruppen-Hub hat keine Einstellungen. Erstelle Gruppen mit seinem Button „Gruppe erstellen“."
     }
   },
   "entity": {
@@ -160,6 +170,9 @@
       },
       "dismiss": {
         "name": "Dismiss"
+      },
+      "create_group": {
+        "name": "Gruppe erstellen"
       }
     }
   },

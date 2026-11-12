@@ -9,7 +9,7 @@ import voluptuous as vol
 
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.lovelace import DOMAIN as LOVELACE_DOMAIN
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState
+from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry, ConfigEntryState
 from homeassistant.const import ATTR_DEVICE_ID, ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -27,9 +27,15 @@ from .const import (
     CARD_URL,
     ATTR_DURATION,
     ATTR_TIME,
+    CONF_KIND,
     CONF_POST_TIMEOUT,
     DEFAULT_POST_TIMEOUT,
     DOMAIN,
+    GROUP_PLATFORMS,
+    HUB_PLATFORMS,
+    KIND_CLOCK,
+    KIND_GROUP,
+    KIND_HUB,
     LEGACY_SCRIPT_KEYS,
     MAX_SNOOZE_DURATION,
     MIN_SNOOZE_DURATION,
@@ -41,6 +47,7 @@ from .const import (
     WEEKDAYS,
 )
 from .coordinator import AlarmClockConfigEntry, AlarmClockCoordinator
+from .group import AlarmClockGroupCoordinator, entry_kind
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -107,6 +114,7 @@ def _async_resolve_coordinators(
         if (
             entry is not None
             and entry.domain == DOMAIN
+            and entry_kind(entry) == KIND_CLOCK
             and entry.state is ConfigEntryState.LOADED
         ):
             coordinators.append(entry.runtime_data)
@@ -195,7 +203,7 @@ async def _async_register_card(hass: HomeAssistant) -> None:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the services of the integration."""
+    """Register the services of the integration and ensure the group hub."""
 
     async def _handle_snooze(call: ServiceCall) -> None:
         for coordinator in _async_resolve_coordinators(hass, call):
@@ -225,6 +233,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(
         DOMAIN, SERVICE_SET_ALARM, _handle_set_alarm, SET_ALARM_SCHEMA
     )
+
+    # The hub hosts the "Create group" button. It is created by the
+    # integration itself, as a task, because the flow sets up the new entry
+    # and this component is still in setup.
+    if not any(
+        entry_kind(entry) == KIND_HUB for entry in hass.config_entries.async_entries(DOMAIN)
+    ):
+        hass.async_create_task(
+            hass.config_entries.flow.async_init(
+                DOMAIN, context={"source": SOURCE_IMPORT}, data={CONF_KIND: KIND_HUB}
+            )
+        )
 
     await _async_register_card(hass)
     return True
@@ -300,7 +320,20 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AlarmClockConfigEntry) -> bool:
-    """Set up a single alarm clock."""
+    """Set up an alarm clock, a group of alarm clocks, or the group hub."""
+    kind = entry_kind(entry)
+    if kind == KIND_HUB:
+        await hass.config_entries.async_forward_entry_setups(entry, HUB_PLATFORMS)
+        return True
+
+    if kind == KIND_GROUP:
+        group = AlarmClockGroupCoordinator(hass, entry)
+        await group.async_setup()
+        entry.runtime_data = group
+        await hass.config_entries.async_forward_entry_setups(entry, GROUP_PLATFORMS)
+        entry.async_on_unload(entry.add_update_listener(async_update_group_options))
+        return True
+
     coordinator = AlarmClockCoordinator(hass, entry)
     await coordinator.async_setup()
     entry.runtime_data = coordinator
@@ -315,10 +348,22 @@ async def async_update_options(hass: HomeAssistant, entry: AlarmClockConfigEntry
     await entry.runtime_data.async_apply_options()
 
 
+async def async_update_group_options(
+    hass: HomeAssistant, entry: AlarmClockConfigEntry
+) -> None:
+    """Apply changed group members without a reload."""
+    await entry.runtime_data.async_apply_options()
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: AlarmClockConfigEntry) -> bool:
-    """Unload a single alarm clock."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
+    """Unload an alarm clock, a group of alarm clocks, or the group hub."""
+    kind = entry_kind(entry)
+    platforms = {KIND_HUB: HUB_PLATFORMS, KIND_GROUP: GROUP_PLATFORMS}.get(
+        kind, PLATFORMS
+    )
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
+    # Shutting a clock down notifies its groups, which then drop it as a member.
+    if unload_ok and kind == KIND_CLOCK:
         await entry.runtime_data.async_shutdown()
     return unload_ok
 

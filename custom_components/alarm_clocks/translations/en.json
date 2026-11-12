@@ -74,10 +74,20 @@
         "data_description": {
           "post_timeout": "Post actions still running after this many minutes are stopped, so that a sequence that never ends cannot keep a one-shot alarm clock switched on."
         }
+      },
+      "group": {
+        "title": "Group members",
+        "description": "Pick the alarm clocks that belong to this group. The group's sensors and buttons combine them. An alarm clock can belong to several groups.",
+        "data": {
+          "members": "Alarm clocks"
+        }
       }
     },
     "error": {
       "invalid_actions": "These actions are invalid. The log names the reason."
+    },
+    "abort": {
+      "hub_not_configurable": "The group hub has no settings. Use its Create group button to make a group."
     }
   },
   "entity": {
@@ -160,6 +170,9 @@
       },
       "dismiss": {
         "name": "Dismiss"
+      },
+      "create_group": {
+        "name": "Create group"
       }
     }
   },

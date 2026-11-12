@@ -26,6 +26,8 @@ from .const import (
     CONF_AUTO_DISMISS,
     CONF_DAYS,
     CONF_ENABLED,
+    CONF_KIND,
+    CONF_MEMBERS,
     CONF_POST_OFFSET,
     CONF_POST_TIMEOUT,
     CONF_PRE_OFFSET,
@@ -39,10 +41,15 @@ from .const import (
     DEFAULT_PRE_OFFSET,
     DEFAULT_SNOOZE_DURATION,
     DOMAIN,
+    HUB_UNIQUE_ID,
+    KIND_CLOCK,
+    KIND_GROUP,
+    KIND_HUB,
     MAX_POST_TIMEOUT,
     MIN_POST_TIMEOUT,
     PHASE_POST,
 )
+from .group import entry_kind
 from .models import parse_actions
 
 _LOGGER = logging.getLogger(__name__)
@@ -118,10 +125,38 @@ class AlarmClockConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
         )
 
+    async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:
+        """Create the group hub, or a new empty group, started by the integration."""
+        if import_data[CONF_KIND] == KIND_HUB:
+            await self.async_set_unique_id(HUB_UNIQUE_ID)
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(
+                title="Alarm Clock Groups", data={CONF_KIND: KIND_HUB}
+            )
+
+        taken = {
+            entry.title
+            for entry in self._async_current_entries()
+            if entry_kind(entry) == KIND_GROUP
+        }
+        number = 1
+        while f"Group {number}" in taken:
+            number += 1
+        return self.async_create_entry(
+            title=f"Group {number}",
+            data={CONF_KIND: KIND_GROUP},
+            options={CONF_MEMBERS: []},
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
         """Return the options flow."""
+        kind = entry_kind(config_entry)
+        if kind == KIND_GROUP:
+            return AlarmClockGroupOptionsFlow()
+        if kind == KIND_HUB:
+            return AlarmClockHubOptionsFlow()
         return AlarmClockOptionsFlow()
 
 
@@ -215,3 +250,66 @@ class AlarmClockOptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id=phase, data_schema=vol.Schema(fields), errors=errors
         )
+
+
+class AlarmClockGroupOptionsFlow(OptionsFlow):
+    """Choose the alarm clocks that belong to a group."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Start by picking the member alarm clocks."""
+        return await self.async_step_group(user_input)
+
+    async def async_step_group(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick the member alarm clocks."""
+        clocks = [
+            entry
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+            if entry_kind(entry) == KIND_CLOCK
+        ]
+        clock_ids = {entry.entry_id for entry in clocks}
+
+        if user_input is not None:
+            return self.async_create_entry(
+                data={CONF_MEMBERS: user_input.get(CONF_MEMBERS, [])}
+            )
+
+        current = [
+            member
+            for member in self.config_entry.options.get(CONF_MEMBERS, [])
+            if member in clock_ids
+        ]
+        return self.async_show_form(
+            step_id="group",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_MEMBERS, description={"suggested_value": current}
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(
+                                    value=entry.entry_id, label=entry.title
+                                )
+                                for entry in clocks
+                            ],
+                            multiple=True,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+        )
+
+
+class AlarmClockHubOptionsFlow(OptionsFlow):
+    """The group hub has no settings of its own."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Refuse: the hub is configured through its Create group button."""
+        return self.async_abort(reason="hub_not_configurable")

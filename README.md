@@ -155,6 +155,31 @@ the alarm; the second part is a fixed English key and is therefore identical
 on every instance, regardless of the configured language. The display names,
 in contrast, follow the language of Home Assistant.
 
+## Groups
+
+A group combines several alarm clocks into one device, for example to show the
+next alarm of a bedroom's work alarm, weekend alarm and one-off flight alarm as
+one value. Every alarm clock stays its own device; a group only reads from its
+members and acts on them.
+
+The integration creates an **Alarm Clock Groups** device on its own, which
+holds the button `button.alarm_clock_groups_create_group`. Pressing it adds a
+group named `Group 1`, `Group 2` and so on. Choose the members in the
+**Configure** dialog of that group: a clock can belong to several groups.
+
+For a group named `Group 1`:
+
+| Entity | Meaning |
+| --- | --- |
+| `sensor.group_1_next_alarm` | Earliest next alarm of all members |
+| `sensor.group_1_state` | Most urgent state of the members: `ringing`, `snoozed`, `pre_active`, `post_active`, `post_pending`, `armed`, `disabled` |
+| `binary_sensor.group_1_ringing` | At least one member is ringing |
+| `button.group_1_snooze` | Snoozes the members that are ringing; available while a member is engaged and snoozing is possible |
+| `button.group_1_dismiss` | Dismisses the members that are ringing or snoozing |
+
+Members that are unloaded or removed are dropped from the group. The group
+buttons do nothing to members that are neither ringing nor snoozing.
+
 ## Lovelace card
 
 The card is part of the integration. On startup it is served and registered as
@@ -260,6 +285,8 @@ actions:
 
 - `binary_sensor.<a>_ringing` is read-only. Use `alarm_clocks.trigger_alarm`
   and `alarm_clocks.dismiss` to change it.
+- The services and the card only address alarm clocks, not groups. Use the
+  group's own buttons to snooze or dismiss a group.
 - A snooze whose end fell into a downtime of Home Assistant is only caught up
   within one hour, and discarded afterwards.
 - A regular alarm time that falls entirely into a downtime is skipped.

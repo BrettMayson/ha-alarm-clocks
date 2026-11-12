@@ -9,9 +9,10 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import ALARM_CLOCK_STATES
+from .const import ALARM_CLOCK_STATES, KIND_GROUP
 from .coordinator import AlarmClockConfigEntry, AlarmClockCoordinator
 from .entity import AlarmClockEntity
+from .group import AlarmClockGroupCoordinator, AlarmClockGroupEntity, entry_kind
 
 
 async def async_setup_entry(
@@ -20,6 +21,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensors."""
+    if entry_kind(entry) == KIND_GROUP:
+        async_add_entities(
+            [
+                AlarmClockGroupNextAlarmSensor(entry.runtime_data),
+                AlarmClockGroupStateSensor(entry.runtime_data),
+            ]
+        )
+        return
+
     coordinator = entry.runtime_data
     async_add_entities(
         [
@@ -101,3 +111,36 @@ class AlarmClockPostDueSensor(AlarmClockEntity, SensorEntity):
     def native_value(self) -> datetime | None:
         """Start of the post actions, or None while none is pending."""
         return self.coordinator.data.post_due_at
+
+
+class AlarmClockGroupNextAlarmSensor(AlarmClockGroupEntity, SensorEntity):
+    """Next alarm of the group: the earliest next alarm of its members."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:alarm"
+
+    def __init__(self, coordinator: AlarmClockGroupCoordinator) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, "next_alarm")
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Earliest next alarm among the running members."""
+        return self.coordinator.data.next_alarm
+
+
+class AlarmClockGroupStateSensor(AlarmClockGroupEntity, SensorEntity):
+    """Combined state of the members; the most active state wins."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ALARM_CLOCK_STATES
+    _attr_icon = "mdi:state-machine"
+
+    def __init__(self, coordinator: AlarmClockGroupCoordinator) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, "state")
+
+    @property
+    def native_value(self) -> str:
+        """Combined state."""
+        return self.coordinator.data.state

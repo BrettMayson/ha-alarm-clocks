@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
-from homeassistant.helpers.entity import async_generate_entity_id
+from homeassistant.helpers.entity import Entity, async_generate_entity_id
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -25,6 +25,22 @@ OBJECT_ID_OVERRIDES: dict[str, str] = {
     "day_sat": "saturday",
     "day_sun": "sunday",
 }
+
+
+@callback
+def async_assign_entity_id(
+    entity: Entity,
+    hass: HomeAssistant,
+    platform: EntityPlatform,
+    title: str,
+    key: str,
+) -> None:
+    """Derive the entity ID from the English key, not the translated name."""
+    if entity.entity_id is None:
+        suffix = OBJECT_ID_OVERRIDES.get(key, key)
+        entity.entity_id = async_generate_entity_id(
+            f"{platform.domain}.{{}}", f"{title} {suffix}", hass=hass
+        )
 
 
 class AlarmClockEntity(CoordinatorEntity[AlarmClockCoordinator]):
@@ -63,14 +79,15 @@ class AlarmClockEntity(CoordinatorEntity[AlarmClockCoordinator]):
         from the internal key, which is always English, while the display
         name stays translated.
         """
-        if self.entity_id is None:
-            suffix = OBJECT_ID_OVERRIDES.get(self._key, self._key)
-            self.entity_id = async_generate_entity_id(
-                f"{platform.domain}.{{}}",
-                f"{self.coordinator.config_entry.title} {suffix}",
-                hass=hass,
-            )
+        async_assign_entity_id(
+            self,
+            hass,
+            platform,
+            self.coordinator.config_entry.title,
+            self._key,
+        )
         super().add_to_platform_start(hass, platform, parallel_updates)
+
 
     @property
     def config(self):
