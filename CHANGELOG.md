@@ -8,10 +8,11 @@ versioning [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Alarm clock groups. An **Alarm Clock Groups** device with a **Create group**
-  button adds a group, whose members are chosen in its options. A group has a
-  next alarm sensor, a state sensor, a ringing binary sensor, and snooze and
-  dismiss buttons that act on the members which are ringing or snoozing.
+- Alarm clock groups. Adding the integration offers a **Group** in addition to
+  an alarm clock. The group asks for a name and its member clocks, and its
+  members can be changed later through its options. A group has a next alarm
+  sensor, a state sensor, a ringing binary sensor, and snooze and dismiss
+  buttons that act on the members which are ringing or snoozing.
 
 ## [3.0.0] - 2026-09-28
 

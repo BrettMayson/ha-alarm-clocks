@@ -1,22 +1,15 @@
-"""Buttons for snooze and dismiss, and the group hub's create group button."""
+"""Buttons for snooze and dismiss, of alarm clocks and of groups."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
 from homeassistant.components.button import ButtonEntity
-from homeassistant.config_entries import SOURCE_IMPORT
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_KIND, DOMAIN, KIND_GROUP, KIND_HUB
+from .const import KIND_GROUP
 from .coordinator import AlarmClockConfigEntry, AlarmClockCoordinator
-from .entity import AlarmClockEntity, async_assign_entity_id
+from .entity import AlarmClockEntity
 from .group import AlarmClockGroupCoordinator, AlarmClockGroupEntity, entry_kind
-
-if TYPE_CHECKING:
-    from homeassistant.helpers.entity_platform import EntityPlatform
 
 
 async def async_setup_entry(
@@ -25,12 +18,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the buttons."""
-    kind = entry_kind(entry)
-    if kind == KIND_HUB:
-        async_add_entities([AlarmClockCreateGroupButton(entry)])
-        return
-
-    if kind == KIND_GROUP:
+    if entry_kind(entry) == KIND_GROUP:
         group: AlarmClockGroupCoordinator = entry.runtime_data
         async_add_entities(
             [
@@ -122,44 +110,4 @@ class AlarmClockGroupDismissButton(AlarmClockGroupEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Dismiss the members."""
         await self.coordinator.async_dismiss()
-
-
-class AlarmClockCreateGroupButton(ButtonEntity):
-    """Creates an empty group on the group hub; its members are set in its options."""
-
-    _attr_has_entity_name = True
-    _attr_translation_key = "create_group"
-    _attr_icon = "mdi:alarm-multiple"
-
-    def __init__(self, entry: AlarmClockConfigEntry) -> None:
-        """Bind the button to the hub device."""
-        self._key = "create_group"
-        self._title = entry.title
-        self._attr_unique_id = f"{entry.entry_id}_{self._key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=entry.title,
-            manufacturer="Alarm Clocks & Wake-up Routines",
-            model="Alarm Clock Group Hub",
-            entry_type=DeviceEntryType.SERVICE,
-        )
-
-    @callback
-    def add_to_platform_start(
-        self,
-        hass: HomeAssistant,
-        platform: EntityPlatform,
-        parallel_updates: Any,
-    ) -> None:
-        """Derive the entity ID from the English key, as for the other entities."""
-        async_assign_entity_id(self, hass, platform, self._title, self._key)
-        super().add_to_platform_start(hass, platform, parallel_updates)
-
-    async def async_press(self) -> None:
-        """Start the flow that creates a new group."""
-        await self.hass.config_entries.flow.async_init(
-            DOMAIN,
-            context={"source": SOURCE_IMPORT},
-            data={CONF_KIND: KIND_GROUP},
-        )
 

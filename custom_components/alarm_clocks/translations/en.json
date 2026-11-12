@@ -2,6 +2,14 @@
   "config": {
     "step": {
       "user": {
+        "title": "Add",
+        "description": "Add an alarm clock, or a group of alarm clocks that combines the sensors and buttons of its members.",
+        "menu_options": {
+          "alarm_clock": "Alarm clock",
+          "group": "Group of alarm clocks"
+        }
+      },
+      "alarm_clock": {
         "title": "Add alarm clock",
         "description": "Creates a new alarm clock. Alarm time, weekdays and all other settings are configured afterwards through the entities of the alarm clock.",
         "data": {
@@ -9,6 +17,18 @@
         },
         "data_description": {
           "name": "Used as the device name, for example \"Alarm 1\"."
+        }
+      },
+      "group": {
+        "title": "Add group",
+        "description": "A group combines the sensors and buttons of its members: the next alarm of all of them, and snooze and dismiss for the ones that are ringing. Members can be changed later in the group's options.",
+        "data": {
+          "name": "Name",
+          "members": "Alarm clocks"
+        },
+        "data_description": {
+          "name": "Used as the device name, for example \"Weekdays\".",
+          "members": "An alarm clock can belong to several groups."
         }
       },
       "reconfigure": {
@@ -20,7 +40,9 @@
     },
     "abort": {
       "already_configured": "An alarm clock with this name already exists.",
-      "reconfigure_successful": "The alarm clock was renamed."
+      "reconfigure_successful": "The alarm clock was renamed.",
+      "no_alarm_clocks": "Add an alarm clock first. A group combines existing alarm clocks.",
+      "group_already_exists": "A group with this name already exists."
     }
   },
   "options": {
@@ -85,9 +107,6 @@
     },
     "error": {
       "invalid_actions": "These actions are invalid. The log names the reason."
-    },
-    "abort": {
-      "hub_not_configurable": "The group hub has no settings. Use its Create group button to make a group."
     }
   },
   "entity": {
@@ -170,9 +189,6 @@
       },
       "dismiss": {
         "name": "Dismiss"
-      },
-      "create_group": {
-        "name": "Create group"
       }
     }
   },

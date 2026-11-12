@@ -25,13 +25,22 @@ from custom_components.alarm_clocks.const import (
 )
 
 
-async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
-    """An alarm clock can be created without further input."""
+async def _start_alarm_clock(hass: HomeAssistant) -> dict:
+    """Open the flow and pick the alarm clock step from its menu."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
+    assert result["type"] is FlowResultType.MENU
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "alarm_clock"}
+    )
+
+
+async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
+    """An alarm clock can be created without further input."""
+    result = await _start_alarm_clock(hass)
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    assert result["step_id"] == "alarm_clock"
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_NAME: "Alarm 1"}
@@ -51,9 +60,7 @@ async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
 async def test_user_flow_duplicate_name_aborts(hass: HomeAssistant) -> None:
     """The same name is not created twice."""
     for expected in (FlowResultType.CREATE_ENTRY, FlowResultType.ABORT):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": config_entries.SOURCE_USER}
-        )
+        result = await _start_alarm_clock(hass)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_NAME: "Alarm 1"}
         )

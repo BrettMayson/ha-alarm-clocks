@@ -14,7 +14,7 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.const import CONF_NAME
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 from homeassistant.util import slugify
@@ -41,10 +41,8 @@ from .const import (
     DEFAULT_PRE_OFFSET,
     DEFAULT_SNOOZE_DURATION,
     DOMAIN,
-    HUB_UNIQUE_ID,
     KIND_CLOCK,
     KIND_GROUP,
-    KIND_HUB,
     MAX_POST_TIMEOUT,
     MIN_POST_TIMEOUT,
     PHASE_POST,
@@ -59,6 +57,42 @@ USER_SCHEMA = vol.Schema(
         vol.Required(CONF_NAME, default=DEFAULT_NAME): selector.TextSelector(),
     }
 )
+
+
+def _alarm_clocks(hass: HomeAssistant) -> list[ConfigEntry]:
+    """The alarm clock entries, which are the members a group can have."""
+    return [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry_kind(entry) == KIND_CLOCK
+    ]
+
+
+def _member_selector(clocks: list[ConfigEntry]) -> selector.SelectSelector:
+    """Select any number of alarm clocks."""
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[
+                selector.SelectOptionDict(value=entry.entry_id, label=entry.title)
+                for entry in clocks
+            ],
+            multiple=True,
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
+
+
+def _next_group_name(hass: HomeAssistant) -> str:
+    """The first "Group N" name that no existing group uses."""
+    taken = {
+        entry.title
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry_kind(entry) == KIND_GROUP
+    }
+    number = 1
+    while f"Group {number}" in taken:
+        number += 1
+    return f"Group {number}"
 
 
 def _default_options() -> dict[str, Any]:
@@ -90,6 +124,14 @@ class AlarmClockConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Choose between a new alarm clock and a new group of alarm clocks."""
+        return self.async_show_menu(
+            step_id="user", menu_options=["alarm_clock", "group"]
+        )
+
+    async def async_step_alarm_clock(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Ask for the name of the new alarm clock."""
         if user_input is not None:
             name = user_input[CONF_NAME].strip()
@@ -101,7 +143,43 @@ class AlarmClockConfigFlow(ConfigFlow, domain=DOMAIN):
                 title=name, data={}, options=_default_options()
             )
 
-        return self.async_show_form(step_id="user", data_schema=USER_SCHEMA)
+        return self.async_show_form(step_id="alarm_clock", data_schema=USER_SCHEMA)
+
+    async def async_step_group(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Create a group from its name and member alarm clocks."""
+        clocks = _alarm_clocks(self.hass)
+        if not clocks:
+            return self.async_abort(reason="no_alarm_clocks")
+
+        if user_input is not None:
+            name = user_input[CONF_NAME].strip()
+            # The colon keeps group IDs apart from the slugged IDs of alarm clocks.
+            unique_id = f"{KIND_GROUP}:{slugify(name)}"
+            if self.hass.config_entries.async_entry_for_domain_unique_id(
+                DOMAIN, unique_id
+            ):
+                return self.async_abort(reason="group_already_exists")
+            await self.async_set_unique_id(unique_id)
+
+            return self.async_create_entry(
+                title=name,
+                data={CONF_KIND: KIND_GROUP},
+                options={CONF_MEMBERS: user_input.get(CONF_MEMBERS, [])},
+            )
+
+        return self.async_show_form(
+            step_id="group",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_NAME, default=_next_group_name(self.hass)
+                    ): selector.TextSelector(),
+                    vol.Optional(CONF_MEMBERS): _member_selector(clocks),
+                }
+            ),
+        )
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -125,38 +203,12 @@ class AlarmClockConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
         )
 
-    async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:
-        """Create the group hub, or a new empty group, started by the integration."""
-        if import_data[CONF_KIND] == KIND_HUB:
-            await self.async_set_unique_id(HUB_UNIQUE_ID)
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(
-                title="Alarm Clock Groups", data={CONF_KIND: KIND_HUB}
-            )
-
-        taken = {
-            entry.title
-            for entry in self._async_current_entries()
-            if entry_kind(entry) == KIND_GROUP
-        }
-        number = 1
-        while f"Group {number}" in taken:
-            number += 1
-        return self.async_create_entry(
-            title=f"Group {number}",
-            data={CONF_KIND: KIND_GROUP},
-            options={CONF_MEMBERS: []},
-        )
-
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
         """Return the options flow."""
-        kind = entry_kind(config_entry)
-        if kind == KIND_GROUP:
+        if entry_kind(config_entry) == KIND_GROUP:
             return AlarmClockGroupOptionsFlow()
-        if kind == KIND_HUB:
-            return AlarmClockHubOptionsFlow()
         return AlarmClockOptionsFlow()
 
 
@@ -265,11 +317,7 @@ class AlarmClockGroupOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Pick the member alarm clocks."""
-        clocks = [
-            entry
-            for entry in self.hass.config_entries.async_entries(DOMAIN)
-            if entry_kind(entry) == KIND_CLOCK
-        ]
+        clocks = _alarm_clocks(self.hass)
         clock_ids = {entry.entry_id for entry in clocks}
 
         if user_input is not None:
@@ -288,28 +336,7 @@ class AlarmClockGroupOptionsFlow(OptionsFlow):
                 {
                     vol.Optional(
                         CONF_MEMBERS, description={"suggested_value": current}
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                selector.SelectOptionDict(
-                                    value=entry.entry_id, label=entry.title
-                                )
-                                for entry in clocks
-                            ],
-                            multiple=True,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
+                    ): _member_selector(clocks),
                 }
             ),
         )
-
-
-class AlarmClockHubOptionsFlow(OptionsFlow):
-    """The group hub has no settings of its own."""
-
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Refuse: the hub is configured through its Create group button."""
-        return self.async_abort(reason="hub_not_configurable")

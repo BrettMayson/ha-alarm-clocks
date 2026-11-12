@@ -2,6 +2,14 @@
   "config": {
     "step": {
       "user": {
+        "title": "Hinzufügen",
+        "description": "Füge einen Wecker hinzu oder eine Gruppe von Weckern, die die Entities ihrer Mitglieder zusammenfasst.",
+        "menu_options": {
+          "alarm_clock": "Wecker",
+          "group": "Gruppe von Weckern"
+        }
+      },
+      "alarm_clock": {
         "title": "Wecker hinzufügen",
         "description": "Legt einen neuen Wecker an. Weckzeit, Wochentage und alle weiteren Einstellungen werden anschließend über die Entities des Weckers gesetzt.",
         "data": {
@@ -9,6 +17,18 @@
         },
         "data_description": {
           "name": "Wird als Gerätename verwendet, zum Beispiel \"Wecker 1\"."
+        }
+      },
+      "group": {
+        "title": "Gruppe hinzufügen",
+        "description": "Eine Gruppe fasst die Entities ihrer Mitglieder zusammen: den nächsten Wecker aller Mitglieder sowie Schlummern und Ausschalten für die klingelnden. Die Mitglieder lassen sich später in den Optionen der Gruppe ändern.",
+        "data": {
+          "name": "Name",
+          "members": "Wecker"
+        },
+        "data_description": {
+          "name": "Wird als Gerätename verwendet, zum Beispiel \"Werktags\".",
+          "members": "Ein Wecker kann zu mehreren Gruppen gehören."
         }
       },
       "reconfigure": {
@@ -20,7 +40,9 @@
     },
     "abort": {
       "already_configured": "Ein Wecker mit diesem Namen existiert bereits.",
-      "reconfigure_successful": "Der Wecker wurde umbenannt."
+      "reconfigure_successful": "Der Wecker wurde umbenannt.",
+      "no_alarm_clocks": "Lege zuerst einen Wecker an. Eine Gruppe fasst bestehende Wecker zusammen.",
+      "group_already_exists": "Eine Gruppe mit diesem Namen existiert bereits."
     }
   },
   "options": {
@@ -85,9 +107,6 @@
     },
     "error": {
       "invalid_actions": "Diese Aktionen sind ungültig. Der Grund steht im Log."
-    },
-    "abort": {
-      "hub_not_configurable": "Der Gruppen-Hub hat keine Einstellungen. Erstelle Gruppen mit seinem Button „Gruppe erstellen“."
     }
   },
   "entity": {
@@ -170,9 +189,6 @@
       },
       "dismiss": {
         "name": "Dismiss"
-      },
-      "create_group": {
-        "name": "Gruppe erstellen"
       }
     }
   },

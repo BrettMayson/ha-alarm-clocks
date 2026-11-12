@@ -122,8 +122,12 @@ keep running in between.
 **Settings → Devices & services → Integrations → Add integration →
 Alarm Clocks & Wake-up Routines**
 
-The form only asks for a **name**. It becomes the device name (for example
-`Alarm 1`) and determines the entity IDs.
+The first step asks what to add:
+
+- **Alarm clock**: the form only asks for a **name**. It becomes the device name
+  (for example `Alarm 1`) and determines the entity IDs.
+- **Group**: asks for a **name** and the alarm clocks that belong to it. See
+  [Groups](#groups).
 
 Everything else is configured afterwards through the entities of the alarm
 clock: alarm time, weekdays, snooze duration and the pre, post and auto
@@ -162,10 +166,11 @@ next alarm of a bedroom's work alarm, weekend alarm and one-off flight alarm as
 one value. Every alarm clock stays its own device; a group only reads from its
 members and acts on them.
 
-The integration creates an **Alarm Clock Groups** device on its own, which
-holds the button `button.alarm_clock_groups_create_group`. Pressing it adds a
-group named `Group 1`, `Group 2` and so on. Choose the members in the
-**Configure** dialog of that group: a clock can belong to several groups.
+To create a group, go to **Add integration → Alarm Clocks & Wake-up Routines**
+and choose **Group**. Give it a name and pick its members from the alarm
+clocks. A clock can belong to several groups. Change the members later through
+**Configure** on the group. A group needs at least one alarm clock to be
+created.
 
 For a group named `Group 1`:
 

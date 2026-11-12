@@ -1,4 +1,4 @@
-"""Alarm clock groups: the hub, the group entities and their member clocks."""
+"""Alarm clock groups: creating them through the config flow, and their entities."""
 
 from __future__ import annotations
 
@@ -8,18 +8,17 @@ import pytest
 from freezegun.api import FrozenDateTimeFactory
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
+from homeassistant.config_entries import SOURCE_USER, ConfigEntry
+from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.alarm_clocks.const import (
     CONF_ALARM_TIME,
-    CONF_KIND,
     CONF_MEMBERS,
     DOMAIN,
     KIND_GROUP,
-    KIND_HUB,
     STATE_ARMED,
     STATE_RINGING,
 )
@@ -62,12 +61,26 @@ async def _add_clock(
     return entry
 
 
-async def _create_group(hass: HomeAssistant) -> ConfigEntry:
-    await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_IMPORT}, data={CONF_KIND: KIND_GROUP}
+async def _create_group(
+    hass: HomeAssistant, name: str, members: list[ConfigEntry]
+) -> ConfigEntry:
+    """Create a group through the config flow, with its member clocks."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
     )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "group"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "group"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_NAME: name, CONF_MEMBERS: [m.entry_id for m in members]},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    return _entries_of_kind(hass, KIND_GROUP)[-1]
+    return result["result"]
 
 
 async def _set_members(
@@ -82,23 +95,62 @@ async def _set_members(
     await hass.async_block_till_done()
 
 
-async def test_create_group_button_creates_empty_group(
+async def test_group_flow_creates_group_with_members(
+    hass: HomeAssistant, setup_alarm: MockConfigEntry, options: dict[str, Any]
+) -> None:
+    """The group takes the name given and the clocks picked as its members."""
+    other = await _add_clock(
+        hass, "Alarm 2", "wecker_2", {**options, CONF_ALARM_TIME: "09:00:00"}
+    )
+    group = await _create_group(hass, "Weekdays", [setup_alarm, other])
+
+    assert group.title == "Weekdays"
+    assert entry_kind(group) == KIND_GROUP
+    assert group.options[CONF_MEMBERS] == [setup_alarm.entry_id, other.entry_id]
+
+
+async def test_group_flow_needs_an_alarm_clock(hass: HomeAssistant) -> None:
+    """A group combines existing clocks, so it cannot be created without any."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "group"}
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_alarm_clocks"
+
+
+async def test_group_flow_rejects_duplicate_name(
     hass: HomeAssistant, setup_alarm: MockConfigEntry
 ) -> None:
-    """The hub is created with the first clock; its button creates a group."""
-    hub = _entries_of_kind(hass, KIND_HUB)[0]
-    button = _entity_id(hass, hub, "button", "create_group")
+    """Two groups cannot share a name."""
+    await _create_group(hass, "Weekdays", [setup_alarm])
 
-    await hass.services.async_call("button", "press", {"entity_id": button}, blocking=True)
-    await hass.async_block_till_done()
-
-    (group,) = _entries_of_kind(hass, KIND_GROUP)
-    assert group.title == "Group 1"
-    assert group.options[CONF_MEMBERS] == []
-
-    result = await hass.config_entries.options.async_init(hub.entry_id)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "group"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_NAME: "Weekdays", CONF_MEMBERS: []}
+    )
     assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "hub_not_configurable"
+    assert result["reason"] == "group_already_exists"
+
+
+async def test_group_members_can_be_edited(
+    hass: HomeAssistant, setup_alarm: MockConfigEntry, options: dict[str, Any]
+) -> None:
+    """The options of a group replace its member clocks."""
+    other = await _add_clock(
+        hass, "Alarm 2", "wecker_2", {**options, CONF_ALARM_TIME: "09:00:00"}
+    )
+    group = await _create_group(hass, "Weekdays", [setup_alarm])
+    await _set_members(hass, group, [other])
+
+    assert group.options[CONF_MEMBERS] == [other.entry_id]
 
 
 async def test_next_alarm_is_earliest_member(
@@ -109,8 +161,7 @@ async def test_next_alarm_is_earliest_member(
     late = await _add_clock(
         hass, "Alarm 2", "wecker_2", {**options, CONF_ALARM_TIME: "09:00:00"}
     )
-    group = await _create_group(hass)
-    await _set_members(hass, group, [early, late])
+    group = await _create_group(hass, "Weekdays", [early, late])
 
     group_next = hass.states.get(_entity_id(hass, group, "sensor", "next_alarm"))
     early_next = hass.states.get(_entity_id(hass, early, "sensor", "next_alarm"))
@@ -127,8 +178,7 @@ async def test_group_dismiss_only_affects_ringing_members(
     idle = await _add_clock(
         hass, "Alarm 2", "wecker_2", {**options, CONF_ALARM_TIME: "09:00:00"}
     )
-    group = await _create_group(hass)
-    await _set_members(hass, group, [ringing, idle])
+    group = await _create_group(hass, "Weekdays", [ringing, idle])
 
     dismiss = _entity_id(hass, group, "button", "dismiss")
     ringing_sensor = _entity_id(hass, group, "binary_sensor", "ringing")
@@ -151,10 +201,8 @@ async def test_clock_can_belong_to_two_groups(
     hass: HomeAssistant, setup_alarm: MockConfigEntry
 ) -> None:
     """A clock in two groups makes both group ringing sensors turn on."""
-    first = await _create_group(hass)
-    second = await _create_group(hass)
-    await _set_members(hass, first, [setup_alarm])
-    await _set_members(hass, second, [setup_alarm])
+    first = await _create_group(hass, "First", [setup_alarm])
+    second = await _create_group(hass, "Second", [setup_alarm])
 
     await setup_alarm.runtime_data.async_trigger_alarm()
     await hass.async_block_till_done()
@@ -170,8 +218,7 @@ async def test_unloaded_member_is_dropped_from_group(
     remaining = await _add_clock(
         hass, "Alarm 2", "wecker_2", {**options, CONF_ALARM_TIME: "09:00:00"}
     )
-    group = await _create_group(hass)
-    await _set_members(hass, group, [setup_alarm, remaining])
+    group = await _create_group(hass, "Weekdays", [setup_alarm, remaining])
 
     assert await hass.config_entries.async_unload(setup_alarm.entry_id)
     await hass.async_block_till_done()
